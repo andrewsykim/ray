@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/runtime_env_common.proto";
+
+enum SandboxAgentRpcStatus {
+  // OK.
+  SANDBOX_AGENT_RPC_STATUS_OK = 0;
+  // Failed.
+  SANDBOX_AGENT_RPC_STATUS_FAILED = 1;
+}
+
+message GetOrCreateSandboxEnvRequest {
+  /// The requested sandbox runtime (e.g., "docker").
+  string sandbox_runtime = 1;
+  /// Job ID for the sandbox environment.
+  bytes job_id = 2;
+  string source_process = 3;
+}
+
+message GetOrCreateSandboxEnvReply {
+  SandboxAgentRpcStatus status = 1;
+  string error_message = 2;
+  /// Json serialized SandboxEnvContext (contains the wrapper command).
+  string serialized_sandbox_env_context = 3;
+  /// The resulting wrapper command to use.
+  repeated string wrapper_command = 4;
+}
+
+message DeleteSandboxEnvIfPossibleRequest {
+  string sandbox_runtime = 1;
+  string source_process = 2;
+}
+
+message DeleteSandboxEnvIfPossibleReply {
+  SandboxAgentRpcStatus status = 1;
+  string error_message = 2;
+}
+
+service SandboxEnvAgentService {
+  rpc GetOrCreateSandboxEnv(GetOrCreateSandboxEnvRequest) returns (GetOrCreateSandboxEnvReply);
+  rpc DeleteSandboxEnvIfPossible(DeleteSandboxEnvIfPossibleRequest) returns (DeleteSandboxEnvIfPossibleReply);
+}

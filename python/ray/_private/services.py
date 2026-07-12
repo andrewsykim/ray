@@ -1639,6 +1639,7 @@ def start_raylet(
     metrics_export_port: Optional[int] = None,
     dashboard_agent_listen_port: Optional[int] = None,
     runtime_env_agent_port: Optional[int] = None,
+    sandbox_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
     raylet_stdout_filepath: Optional[str] = None,
@@ -1647,8 +1648,11 @@ def start_raylet(
     dashboard_agent_stderr_filepath: Optional[str] = None,
     dashboard_agent_log_filepath: Optional[str] = None,
     runtime_env_agent_stdout_filepath: Optional[str] = None,
+    sandbox_env_agent_stdout_filepath: Optional[str] = None,
     runtime_env_agent_stderr_filepath: Optional[str] = None,
+    sandbox_env_agent_stderr_filepath: Optional[str] = None,
     runtime_env_agent_log_filepath: Optional[str] = None,
+    sandbox_env_agent_log_filepath: Optional[str] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1707,6 +1711,8 @@ def start_raylet(
             listens to for HTTP.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
+        sandbox_env_agent_port: The port at which the sandbox env agent
+            listens to for HTTP.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1723,10 +1729,16 @@ def start_raylet(
             log file. If None, defaults to "dashboard_agent.log".
         runtime_env_agent_stdout_filepath: The file path to dump
             runtime env agent stdout. If None, stdout is not redirected.
+        sandbox_env_agent_stdout_filepath: The file path to dump
+            sandbox env agent stdout. If None, stdout is not redirected.
         runtime_env_agent_stderr_filepath: The file path to dump
             runtime env agent stderr. If None, stderr is not redirected.
+        sandbox_env_agent_stderr_filepath: The file path to dump
+            sandbox env agent stderr. If None, stderr is not redirected.
         runtime_env_agent_log_filepath: The file path for the runtime env
             agent log file. If None, defaults to "runtime_env_agent.log".
+        sandbox_env_agent_log_filepath: The file path for the sandbox env
+            agent log file. If None, defaults to "sandbox_env_agent.log".
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         fate_share: Whether to share fate between raylet and this process.
@@ -1932,17 +1944,39 @@ def start_raylet(
         f"--log-dir={log_dir}",
         f"--temp-dir={temp_dir}",
     ]
+    sandbox_env_agent_command = [
+        sys.executable,
+        "-u",
+        "-m",
+        "ray._private.sandbox_env_agent.main",
+        f"--node-ip-address={node_ip_address}",
+        f"--sandbox-env-agent-port={sandbox_env_agent_port}",
+        f"--gcs-address={gcs_address}",
+        f"--temp-dir={temp_dir}",
+    ]
     if runtime_env_agent_stdout_filepath:
         runtime_env_agent_command.append(
             f"--stdout-filepath={runtime_env_agent_stdout_filepath}"
+        )
+    if sandbox_env_agent_stdout_filepath:
+        sandbox_env_agent_command.append(
+            f"--stdout-filepath={sandbox_env_agent_stdout_filepath}"
         )
     if runtime_env_agent_stderr_filepath:
         runtime_env_agent_command.append(
             f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
         )
+    if sandbox_env_agent_stderr_filepath:
+        sandbox_env_agent_command.append(
+            f"--stderr-filepath={sandbox_env_agent_stderr_filepath}"
+        )
     if runtime_env_agent_log_filepath:
         runtime_env_agent_command.append(
             f"--logging-filename={os.path.basename(runtime_env_agent_log_filepath)}"
+        )
+    if sandbox_env_agent_log_filepath:
+        sandbox_env_agent_command.append(
+            f"--logging-filename={os.path.basename(sandbox_env_agent_log_filepath)}"
         )
     if (
         runtime_env_agent_stdout_filepath is None
@@ -1956,6 +1990,7 @@ def start_raylet(
             component=ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT
         )
         runtime_env_agent_command.append(f"--logging-format={logging_format}")
+        sandbox_env_agent_command.append(f"--logging-format={logging_format}")
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1980,6 +2015,7 @@ def start_raylet(
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
         f"--runtime_env_agent_port={runtime_env_agent_port}",
+        f"--sandbox_env_agent_port={sandbox_env_agent_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
         f"--fallback_directory={fallback_directory}",
@@ -2027,6 +2063,11 @@ def start_raylet(
     command.append(
         "--runtime_env_agent_command={}".format(
             subprocess.list2cmdline(runtime_env_agent_command)
+        )
+    )
+    command.append(
+        "--sandbox_env_agent_command={}".format(
+            subprocess.list2cmdline(sandbox_env_agent_command)
         )
     )
     if huge_pages:

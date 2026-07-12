@@ -47,6 +47,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/sandbox_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/local_lease_manager.h"
@@ -93,6 +94,7 @@ struct NodeManagerConfig {
   /// The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
   int max_worker_port;
+  int sandbox_env_agent_port;
   /// An explicit list of open ports that workers started will bind
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
@@ -111,6 +113,7 @@ struct NodeManagerConfig {
   std::string dashboard_agent_command;
   /// The command used to start the runtime env agent. Must not be empty.
   std::string runtime_env_agent_command;
+  std::string sandbox_env_agent_command;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
   /// The store socket name.
@@ -206,6 +209,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Return the runtime env agent port.
   int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
+  int GetSandboxEnvAgentPort() const { return sandbox_env_agent_port_; }
 
   /// Return the metrics agent port.
   int GetMetricsAgentPort() const { return metrics_agent_port_; }
@@ -840,8 +844,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
+  std::unique_ptr<AgentManager> CreateSandboxEnvAgentManager(
+      const NodeID &self_node_id, const NodeManagerConfig &config);
 
   int WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                 const NodeManagerConfig &config);
+  int WaitForSandboxEnvAgentPort(const NodeID &self_node_id,
                                  const NodeManagerConfig &config);
 
   /// ID of this node.
@@ -904,7 +912,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for the runtime env agent.
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
+  std::unique_ptr<AgentManager> sandbox_env_agent_manager_;
   int runtime_env_agent_port_{0};
+  int sandbox_env_agent_port_{0};
   int metrics_agent_port_{0};
   int metrics_export_port_{0};
   int dashboard_agent_listen_port_{0};

@@ -444,6 +444,19 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "sandbox_env_agent_proto",
+    srcs = ["sandbox_env_agent.proto"],
+    deps = [
+        ":runtime_env_common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "sandbox_env_agent_cc_proto",
+    deps = [":sandbox_env_agent_proto"],
+)
+
+proto_library(
     name = "usage_proto",
     srcs = ["usage.proto"],
 )
@@ -529,6 +542,7 @@ python_grpc_compile(
         ":reporter_proto",
         ":runtime_env_agent_proto",
         ":runtime_env_common_proto",
+        ":sandbox_env_agent_proto",
         ":usage_proto",
         "//src/ray/protobuf/public:runtime_environment_proto",
     ],

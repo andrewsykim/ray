@@ -166,6 +166,7 @@ class RayParams:
             int
         ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         runtime_env_agent_port: Optional[int] = None,
+        sandbox_env_agent_port: Optional[int] = None,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
@@ -231,6 +232,7 @@ class RayParams:
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
+        self.sandbox_env_agent_port = sandbox_env_agent_port
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
@@ -316,6 +318,7 @@ class RayParams:
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
             "runtime_env_agent": wrap_port(self.runtime_env_agent_port),
+            "sandbox_env_agent": wrap_port(self.sandbox_env_agent_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
@@ -417,6 +420,15 @@ class RayParams:
             ):
                 raise ValueError(
                     "runtime_env_agent_port must be 0 (auto-assign) or an integer "
+                    "between 1024 and 65535."
+                )
+        if self.sandbox_env_agent_port is not None:
+            if self.sandbox_env_agent_port != 0 and (
+                self.sandbox_env_agent_port < 1024
+                or self.sandbox_env_agent_port > 65535
+            ):
+                raise ValueError(
+                    "sandbox_env_agent_port must be 0 (auto-assign) or an integer "
                     "between 1024 and 65535."
                 )
 

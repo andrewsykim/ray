@@ -320,6 +320,7 @@ message GcsNodeInfo {
 
   // The port at which the runtime env agent listens as HTTP.
   int32 runtime_env_agent_port = 27;
+  int32 sandbox_env_agent_port = 34;
 
   // The port at which the metrics agent (dashboard agent grpc) listens.
   int32 metrics_agent_port = 30;

@@ -265,6 +265,7 @@ _actor_only_options = {
             f"Got {x}."
         ),
     ),
+    "sandbox_env": Option((dict, type(None))),
 }
 
 # Priority is important here because during dictionary update, same key with higher

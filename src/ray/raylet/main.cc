@@ -77,6 +77,7 @@ DEFINE_int32(dashboard_agent_listen_port,
              0,
              "The port for dashboard agent to listen on.");
 DEFINE_int32(runtime_env_agent_port, 0, "The port of runtime env agent.");
+DEFINE_int32(sandbox_env_agent_port, 0, "The port of sandbox env agent.");
 DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
@@ -101,6 +102,7 @@ DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(dashboard_agent_command, "", "Dashboard agent command.");
 DEFINE_string(runtime_env_agent_command, "", "Runtime env agent command.");
+DEFINE_string(sandbox_env_agent_command, "", "Sandbox env agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(native_library_path,
               "",
@@ -238,6 +240,7 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  const int sandbox_env_agent_port = static_cast<int>(FLAGS_sandbox_env_agent_port);
   const int dashboard_agent_listen_port =
       static_cast<int>(FLAGS_dashboard_agent_listen_port);
   RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
@@ -255,6 +258,7 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string dashboard_agent_command = FLAGS_dashboard_agent_command;
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
+  const std::string sandbox_env_agent_command = FLAGS_sandbox_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
@@ -605,6 +609,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
     node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
     node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
+    node_manager_config.sandbox_env_agent_port = sandbox_env_agent_port;
     node_manager_config.metrics_agent_port = metrics_agent_port;
     node_manager_config.metrics_export_port = metrics_export_port;
     node_manager_config.dashboard_agent_listen_port = dashboard_agent_listen_port;
@@ -640,6 +645,7 @@ int main(int argc, char *argv[]) {
       RAY_LOG(FATAL) << "Runtime env agent command must be non empty";
     }
     node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
+    node_manager_config.sandbox_env_agent_command = sandbox_env_agent_command;
 
     node_manager_config.report_resources_period_ms =
         RayConfig::instance().raylet_report_resources_period_milliseconds();
@@ -1117,6 +1123,7 @@ int main(int argc, char *argv[]) {
     self_node_info.set_dashboard_agent_listen_port(
         node_manager->GetDashboardAgentListenPort());
     self_node_info.set_runtime_env_agent_port(node_manager->GetRuntimeEnvAgentPort());
+    self_node_info.set_sandbox_env_agent_port(node_manager->GetSandboxEnvAgentPort());
     self_node_info.mutable_state_snapshot()->set_state(ray::rpc::NodeSnapshot::ACTIVE);
     auto resource_map = node_manager_config.resource_config.GetResourceMap();
     self_node_info.mutable_resources_total()->insert(resource_map.begin(),

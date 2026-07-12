@@ -313,6 +313,7 @@ class RuntimeEnv(dict):
         "_nsight",
         "_rocprof_sys",
         "image_uri",
+        "sandbox_env",
     }
 
     extensions_fields: Set[str] = {

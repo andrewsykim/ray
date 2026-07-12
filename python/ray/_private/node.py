@@ -360,6 +360,7 @@ class Node:
             metrics_export_port=ray_params.metrics_export_port or 0,
             dashboard_agent_listen_port=ray_params.dashboard_agent_listen_port or 0,
             runtime_env_agent_port=ray_params.runtime_env_agent_port or 0,
+            sandbox_env_agent_port=ray_params.sandbox_env_agent_port or 0,
         )
 
         # Pick a GCS server port.
@@ -444,6 +445,9 @@ class Node:
         # We always update port info from GCS to ensure consistency.
         self._ray_params.node_manager_port = node_info["node_manager_port"]
         self._ray_params.runtime_env_agent_port = node_info["runtime_env_agent_port"]
+        self._ray_params.sandbox_env_agent_port = node_info.get(
+            "sandbox_env_agent_port", 0
+        )
         self._ray_params.metrics_agent_port = node_info["metrics_agent_port"]
         self._ray_params.metrics_export_port = node_info["metrics_export_port"]
         self._ray_params.dashboard_agent_listen_port = node_info[
@@ -778,6 +782,11 @@ class Node:
     def runtime_env_agent_port(self):
         """Get the port that exposes runtime env agent as http"""
         return self._ray_params.runtime_env_agent_port
+
+    @property
+    def sandbox_env_agent_port(self):
+        """Get the sandbox env agent port of this node."""
+        return self._ray_params.sandbox_env_agent_port
 
     @property
     def runtime_env_agent_address(self):
@@ -1339,6 +1348,15 @@ class Node:
             create_out=True,
             create_err=True,
         )
+        (
+            sandbox_env_agent_stdout_filepath,
+            sandbox_env_agent_stderr_filepath,
+        ) = self.get_log_file_names(
+            "sandbox_env_agent",
+            unique=True,
+            create_out=True,
+            create_err=True,
+        )
 
         dashboard_agent_log_filepath = None
         if dashboard_agent_stdout_filepath is not None:
@@ -1350,6 +1368,12 @@ class Node:
         if runtime_env_agent_stdout_filepath is not None:
             runtime_env_agent_log_filepath = self._get_log_file_name(
                 ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, "log", unique=True
+            )
+
+        sandbox_env_agent_log_filepath = None
+        if sandbox_env_agent_stdout_filepath is not None:
+            sandbox_env_agent_log_filepath = self._get_log_file_name(
+                "sandbox_env_agent", "log", unique=True
             )
 
         self.resource_isolation_config.add_system_pids(
@@ -1385,6 +1409,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
+            sandbox_env_agent_port=self._ray_params.sandbox_env_agent_port,
             metrics_export_port=self._ray_params.metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
@@ -1395,8 +1420,11 @@ class Node:
             dashboard_agent_stderr_filepath=dashboard_agent_stderr_filepath,
             dashboard_agent_log_filepath=dashboard_agent_log_filepath,
             runtime_env_agent_stdout_filepath=runtime_env_agent_stdout_filepath,
+            sandbox_env_agent_stdout_filepath=sandbox_env_agent_stdout_filepath,
             runtime_env_agent_stderr_filepath=runtime_env_agent_stderr_filepath,
+            sandbox_env_agent_stderr_filepath=sandbox_env_agent_stderr_filepath,
             runtime_env_agent_log_filepath=runtime_env_agent_log_filepath,
+            sandbox_env_agent_log_filepath=sandbox_env_agent_log_filepath,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,

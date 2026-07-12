@@ -110,6 +110,7 @@ ray_cc_library(
     deps = [
         ":metrics",
         ":runtime_env_agent_client",
+        ":sandbox_env_agent_client",
         ":worker_interface",
         "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common:constants",
@@ -144,6 +145,27 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/util:clock",
+        "//src/ray/util:logging",
+        "//src/ray/util:process_utils",
+        "@boost//:beast",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "sandbox_env_agent_client",
+    srcs = ["sandbox_env_agent_client.cc"],
+    hdrs = ["sandbox_env_agent_client.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:sandbox_env_agent_cc_proto",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:clock",
         "//src/ray/util:logging",
@@ -308,6 +330,7 @@ ray_cc_library(
         ":local_object_manager_interface",
         ":placement_group_resource_manager",
         ":runtime_env_agent_client",
+        ":sandbox_env_agent_client",
         ":throttler",
         ":wait_manager",
         ":worker",

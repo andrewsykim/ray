@@ -1844,9 +1844,18 @@ class ActorClass(Generic[T]):
         ray_option_utils.validate_actor_options(updated_options, in_options=True)
 
         # only update runtime_env when ".options()" specifies new runtime_env
-        if "runtime_env" in actor_options:
+        # or when sandbox_env is specified
+        if "runtime_env" in actor_options or "sandbox_env" in actor_options:
+            runtime_env = updated_options.get("runtime_env") or {}
+            sandbox_env = updated_options.get("sandbox_env")
+            if sandbox_env is not None:
+                if isinstance(runtime_env, dict):
+                    runtime_env["sandbox_env"] = sandbox_env
+                else:
+                    # if it's already a RuntimeEnv object
+                    runtime_env["sandbox_env"] = sandbox_env
             updated_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
-                updated_options["runtime_env"]
+                runtime_env
             )
 
         class ActorOptionWrapper:

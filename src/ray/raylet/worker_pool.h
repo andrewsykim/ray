@@ -40,6 +40,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/sandbox_env_agent_client.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
@@ -222,6 +223,8 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
 
   virtual void SetRuntimeEnvAgentClient(
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
+  virtual void SetSandboxEnvAgentClient(
+      std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
@@ -347,6 +350,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// Set Runtime Env Manager Client.
   void SetRuntimeEnvAgentClient(
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) override;
+  void SetSandboxEnvAgentClient(
+      std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client) override;
 
   /// Handles the event that a job is started.
   ///
@@ -596,7 +601,8 @@ class WorkerPool : public WorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt,
+      const std::vector<std::string> &sandbox_env_wrapper_command = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -822,8 +828,19 @@ class WorkerPool : public WorkerPoolInterface {
                              const JobID &job_id,
                              const GetOrCreateRuntimeEnvCallback &callback);
 
+  void GetOrCreateSandboxEnv(
+      const std::string &serialized_runtime_env,
+      const JobID &job_id,
+      const std::function<void(bool successful,
+                               const std::string &serialized_sandbox_env_context,
+                               const std::string &setup_error_message,
+                               const std::vector<std::string> &wrapper_command)>
+          &callback);
+
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
+
+  void DeleteSandboxEnvIfPossible(const std::string &serialized_runtime_env);
 
   const ProcessInterface &AddWorkerProcess(
       State &state,
@@ -921,6 +938,7 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Runtime env manager client.
   std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
+  std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client_;
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
   int64_t process_failed_rate_limited_ = 0;

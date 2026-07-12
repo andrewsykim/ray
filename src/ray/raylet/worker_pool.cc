@@ -211,6 +211,14 @@ void WorkerPool::SetRuntimeEnvAgentClient(
   runtime_env_agent_client_ = std::move(runtime_env_agent_client);
 }
 
+void WorkerPool::SetSandboxEnvAgentClient(
+    std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client) {
+  if (sandbox_env_agent_client == nullptr) {
+    RAY_LOG(FATAL) << "SetSandboxEnvAgentClient requires non empty pointer";
+  }
+  sandbox_env_agent_client_ = std::move(sandbox_env_agent_client);
+}
+
 void WorkerPool::PopWorkerCallbackAsync(PopWorkerCallback callback,
                                         std::shared_ptr<WorkerInterface> worker,
                                         PopWorkerStatus status) {
@@ -468,7 +476,8 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
     const int runtime_env_hash,
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    const std::vector<std::string> &sandbox_env_wrapper_command) {
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -522,6 +531,12 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                               runtime_env_hash,
                               serialized_runtime_env_context,
                               state);
+
+  if (!sandbox_env_wrapper_command.empty()) {
+    worker_command_args.insert(worker_command_args.begin(),
+                               sandbox_env_wrapper_command.begin(),
+                               sandbox_env_wrapper_command.end());
+  }
 
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
@@ -1372,42 +1387,67 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
 
 void WorkerPool::StartNewWorker(
     const std::shared_ptr<PopWorkerRequest> &pop_worker_request) {
-  auto start_worker_process_fn = [this](
-                                     std::shared_ptr<PopWorkerRequest> request,
-                                     const std::string &serialized_runtime_env_context) {
-    auto &state = GetStateForLanguage(request->language_);
-    const std::string &serialized_runtime_env =
-        request->runtime_env_info_.serialized_runtime_env();
+  auto start_worker_process_fn =
+      [this](std::shared_ptr<PopWorkerRequest> request,
+             const std::string &serialized_runtime_env_context,
+             const std::vector<std::string> &sandbox_env_wrapper_command) {
+        auto &state = GetStateForLanguage(request->language_);
+        const std::string &serialized_runtime_env =
+            request->runtime_env_info_.serialized_runtime_env();
 
-    PopWorkerStatus status = PopWorkerStatus::OK;
-    auto [proc, worker_id] =
-        StartWorkerProcess(request->language_,
-                           request->worker_type_,
-                           request->job_id_,
-                           &status,
-                           request->dynamic_options_,
-                           request->runtime_env_hash_,
-                           serialized_runtime_env_context,
-                           request->runtime_env_info_,
-                           request->worker_startup_keep_alive_duration_);
-    if (status == PopWorkerStatus::OK) {
-      RAY_CHECK(proc.IsValid());
-      WarnAboutSize();
-      state.pending_registration_requests.emplace_back(request);
-      MonitorPopWorkerRequestForRegistration(request);
-    } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
-      // TODO(jjyao) As an optimization, we don't need to delete the runtime env
-      // but reuse it the next time we retry the request.
-      DeleteRuntimeEnvIfPossible(serialized_runtime_env);
-      state.pending_start_requests.emplace_back(std::move(request));
-    } else {
-      DeleteRuntimeEnvIfPossible(serialized_runtime_env);
-      PopWorkerCallbackAsync(std::move(request->callback_), nullptr, status);
-    }
-  };
+        PopWorkerStatus status = PopWorkerStatus::OK;
+        auto [proc, worker_id] =
+            StartWorkerProcess(request->language_,
+                               request->worker_type_,
+                               request->job_id_,
+                               &status,
+                               request->dynamic_options_,
+                               request->runtime_env_hash_,
+                               serialized_runtime_env_context,
+                               request->runtime_env_info_,
+                               request->worker_startup_keep_alive_duration_,
+                               sandbox_env_wrapper_command);
+        if (status == PopWorkerStatus::OK) {
+          RAY_CHECK(proc.IsValid());
+          WarnAboutSize();
+          state.pending_registration_requests.emplace_back(request);
+          MonitorPopWorkerRequestForRegistration(request);
+        } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
+          // TODO(jjyao) As an optimization, we don't need to delete the runtime env
+          // but reuse it the next time we retry the request.
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env);
+          state.pending_start_requests.emplace_back(std::move(request));
+        } else {
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env);
+          PopWorkerCallbackAsync(std::move(request->callback_), nullptr, status);
+        }
+      };
 
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info_.serialized_runtime_env();
+
+  auto create_sandbox_env_and_start =
+      [this, start_worker_process_fn, pop_worker_request, serialized_runtime_env](
+          const std::string &serialized_runtime_env_context) {
+        GetOrCreateSandboxEnv(
+            serialized_runtime_env,
+            pop_worker_request->job_id_,
+            [start_worker_process_fn, pop_worker_request, serialized_runtime_env_context](
+                bool successful,
+                const std::string &serialized_sandbox_env_context,
+                const std::string &setup_error_message,
+                const std::vector<std::string> &wrapper_command) {
+              if (successful) {
+                start_worker_process_fn(
+                    pop_worker_request, serialized_runtime_env_context, wrapper_command);
+              } else {
+                pop_worker_request->callback_(
+                    nullptr,
+                    PopWorkerStatus::RuntimeEnvCreationFailed,
+                    /*runtime_env_setup_error_message=*/setup_error_message);
+              }
+            });
+      };
 
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // create runtime env.
@@ -1415,12 +1455,12 @@ void WorkerPool::StartNewWorker(
         serialized_runtime_env,
         pop_worker_request->runtime_env_info_.runtime_env_config(),
         pop_worker_request->job_id_,
-        [this, start_worker_process_fn, pop_worker_request](
+        [this, create_sandbox_env_and_start, pop_worker_request](
             bool successful,
             const std::string &serialized_runtime_env_context,
             const std::string &setup_error_message) {
           if (successful) {
-            start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
+            create_sandbox_env_and_start(serialized_runtime_env_context);
           } else {
             process_failed_runtime_env_setup_failed_++;
             pop_worker_request->callback_(
@@ -1430,7 +1470,7 @@ void WorkerPool::StartNewWorker(
           }
         });
   } else {
-    start_worker_process_fn(pop_worker_request, "");
+    create_sandbox_env_and_start("");
   }
 }
 
@@ -1572,37 +1612,56 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                                          int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
+    auto create_sandbox_env_and_start =
+        [this, lease_spec](const std::string &serialized_runtime_env_context) {
+          GetOrCreateSandboxEnv(
+              lease_spec.SerializedRuntimeEnv(),
+              lease_spec.JobId(),
+              [this, lease_spec, serialized_runtime_env_context](
+                  bool successful,
+                  const std::string &serialized_sandbox_env_context,
+                  const std::string &setup_error_message,
+                  const std::vector<std::string> &wrapper_command) {
+                if (!successful) {
+                  RAY_LOG(ERROR)
+                      << "Fails to create or get sandbox env " << setup_error_message;
+                  return;
+                }
+                PopWorkerStatus status;
+                StartWorkerProcess(lease_spec.GetLanguage(),
+                                   rpc::WorkerType::WORKER,
+                                   lease_spec.JobId(),
+                                   &status,
+                                   /*dynamic_options=*/{},
+                                   lease_spec.GetRuntimeEnvHash(),
+                                   serialized_runtime_env_context,
+                                   lease_spec.RuntimeEnvInfo(),
+                                   /*worker_startup_keep_alive_duration=*/std::nullopt,
+                                   wrapper_command);
+              });
+        };
+
     // Prestart worker with no runtime env.
     if (IsRuntimeEnvEmpty(lease_spec.SerializedRuntimeEnv())) {
-      PopWorkerStatus status;
-      StartWorkerProcess(
-          lease_spec.GetLanguage(), rpc::WorkerType::WORKER, lease_spec.JobId(), &status);
+      create_sandbox_env_and_start("");
       continue;
     }
 
     // Prestart worker with runtime env.
-    GetOrCreateRuntimeEnv(
-        lease_spec.SerializedRuntimeEnv(),
-        lease_spec.RuntimeEnvConfig(),
-        lease_spec.JobId(),
-        [this, lease_spec = lease_spec](bool successful,
-                                        const std::string &serialized_runtime_env_context,
-                                        const std::string &setup_error_message) {
-          if (!successful) {
-            RAY_LOG(ERROR) << "Fails to create or get runtime env "
-                           << setup_error_message;
-            return;
-          }
-          PopWorkerStatus status;
-          StartWorkerProcess(lease_spec.GetLanguage(),
-                             rpc::WorkerType::WORKER,
-                             lease_spec.JobId(),
-                             &status,
-                             /*dynamic_options=*/{},
-                             lease_spec.GetRuntimeEnvHash(),
-                             serialized_runtime_env_context,
-                             lease_spec.RuntimeEnvInfo());
-        });
+    GetOrCreateRuntimeEnv(lease_spec.SerializedRuntimeEnv(),
+                          lease_spec.RuntimeEnvConfig(),
+                          lease_spec.JobId(),
+                          [this, create_sandbox_env_and_start, lease_spec](
+                              bool successful,
+                              const std::string &serialized_runtime_env_context,
+                              const std::string &setup_error_message) {
+                            if (!successful) {
+                              RAY_LOG(ERROR) << "Fails to create or get runtime env "
+                                             << setup_error_message;
+                              return;
+                            }
+                            create_sandbox_env_and_start(serialized_runtime_env_context);
+                          });
   }
 }
 
@@ -1902,6 +1961,48 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
           if (!successful) {
             RAY_LOG(ERROR) << "Delete runtime env failed";
             RAY_LOG(DEBUG) << "Runtime env: " << serialized_runtime_env;
+          }
+        });
+  }
+}
+
+void WorkerPool::GetOrCreateSandboxEnv(const std::string &serialized_runtime_env,
+                                       const JobID &job_id,
+                                       const GetOrCreateSandboxEnvCallback &callback) {
+  RAY_LOG(DEBUG) << "GetOrCreateSandboxEnv for job " << job_id << " with runtime_env "
+                 << serialized_runtime_env;
+  sandbox_env_agent_client_->GetOrCreateSandboxEnv(
+      job_id,
+      serialized_runtime_env,
+      [job_id, serialized_runtime_env, callback](
+          bool successful,
+          const std::string &serialized_sandbox_env_context,
+          const std::string &setup_error_message,
+          const std::vector<std::string> &wrapper_command) {
+        if (successful) {
+          callback(true, serialized_sandbox_env_context, "", wrapper_command);
+        } else {
+          RAY_LOG(WARNING) << "Couldn't create a sandbox environment for job " << job_id
+                           << ".";
+          RAY_LOG(DEBUG) << "Sandbox env for job " << job_id << ": "
+                         << serialized_runtime_env;
+          std::vector<std::string> empty_wrapper_command;
+          callback(/*successful=*/false,
+                   /*serialized_sandbox_env_context=*/"",
+                   /*setup_error_message=*/setup_error_message,
+                   empty_wrapper_command);
+        }
+      });
+}
+
+void WorkerPool::DeleteSandboxEnvIfPossible(const std::string &serialized_runtime_env) {
+  RAY_LOG(DEBUG) << "DeleteSandboxEnvIfPossible " << serialized_runtime_env;
+  if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+    sandbox_env_agent_client_->DeleteSandboxEnvIfPossible(
+        serialized_runtime_env, [serialized_runtime_env](bool successful) {
+          if (!successful) {
+            RAY_LOG(ERROR) << "Delete sandbox env failed";
+            RAY_LOG(DEBUG) << "Sandbox env: " << serialized_runtime_env;
           }
         });
   }
