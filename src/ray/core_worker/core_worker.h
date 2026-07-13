@@ -1603,6 +1603,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
+      const std::string &serialized_sandbox_env_info,
       const std::string &call_site,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",

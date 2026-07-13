@@ -419,6 +419,7 @@ message GetAgentPIDsReply {
   // All agent pids
   optional int32 dashboard_agent_pid = 1;
   optional int32 runtime_env_agent_pid = 2;
+  optional int32 sandbox_env_agent_pid = 3;
 }
 
 message KillLocalActorRequest {

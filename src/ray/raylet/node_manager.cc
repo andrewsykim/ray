@@ -259,6 +259,8 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
+      sandbox_env_agent_manager_(nullptr),
+      sandbox_env_agent_port_(0),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            IsLocalhost(config.node_manager_address)),
@@ -318,10 +320,12 @@ NodeManager::NodeManager(
 
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
+  sandbox_env_agent_manager_ = CreateSandboxEnvAgentManager(self_node_id, config);
 
   std::tie(metrics_agent_port_, metrics_export_port_, dashboard_agent_listen_port_) =
       WaitForDashboardAgentPorts(self_node_id, config);
   runtime_env_agent_port_ = WaitForRuntimeEnvAgentPort(self_node_id, config);
+  sandbox_env_agent_port_ = WaitForSandboxEnvAgentPort(self_node_id, config);
 
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
@@ -334,7 +338,19 @@ NodeManager::NodeManager(
       shutdown_raylet_gracefully_,
       clock_);
 
+  auto sandbox_env_agent_client = SandboxEnvAgentClient::Create(
+      io_service_,
+      config.node_manager_address,
+      sandbox_env_agent_port_, /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(
+            io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
+      },
+      shutdown_raylet_gracefully_,
+      clock_);
+
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
+  worker_pool_.SetSandboxEnvAgentClient(std::move(sandbox_env_agent_client));
   worker_pool_.Start();
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
@@ -1983,6 +1999,7 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
       request.runtime_env_info(),
       /*runtime_env_hash=*/
       CalculateRuntimeEnvHash(request.runtime_env_info().serialized_runtime_env()),
+      /*serialized_sandbox_env=*/"",
       /*options=*/std::vector<std::string>{},
       absl::Seconds(request.keep_alive_duration_secs()),
       /*callback=*/
@@ -3015,6 +3032,9 @@ void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
   if (runtime_env_agent_manager_) {
     reply->set_runtime_env_agent_pid(runtime_env_agent_manager_->GetPid());
   }
+  if (sandbox_env_agent_manager_) {
+    reply->set_sandbox_env_agent_pid(sandbox_env_agent_manager_->GetPid());
+  }
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
 
@@ -3042,6 +3062,7 @@ void NodeManager::Stop() {
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
+  sandbox_env_agent_manager_.reset();
   acceptor_.close();
 }
 
@@ -3597,6 +3618,55 @@ int NodeManager::WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
   RAY_ASSIGN_OR_CHECK_SET(
       int port,
       WaitForPersistedPort(config.session_dir, self_node_id, kRuntimeEnvAgentPortName));
+  return port;
+}
+
+std::unique_ptr<AgentManager> NodeManager::CreateSandboxEnvAgentManager(
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
+  auto agent_command_line = ParseCommandLine(config.sandbox_env_agent_command);
+
+  if (agent_command_line.empty()) {
+    return nullptr;
+  }
+
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position,
+                  strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+
+  std::string agent_name = "sandbox_env_agent";
+
+  auto options = AgentManager::Options({self_node_id,
+                                        agent_name,
+                                        agent_command_line,
+                                        /*fate_shares=*/true});
+  return std::make_unique<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(
+            io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
+      },
+      this->shutdown_raylet_gracefully_,
+      true,
+      add_process_to_system_cgroup_hook_);
+}
+
+int NodeManager::WaitForSandboxEnvAgentPort(const NodeID &self_node_id,
+                                            const NodeManagerConfig &config) {
+  if (config.sandbox_env_agent_command.empty()) {
+    return 0;
+  }
+  if (config.sandbox_env_agent_port != 0) {
+    return config.sandbox_env_agent_port;
+  }
+  RAY_ASSIGN_OR_CHECK_SET(
+      int port,
+      WaitForPersistedPort(config.session_dir, self_node_id, kSandboxEnvAgentPortName));
   return port;
 }
 

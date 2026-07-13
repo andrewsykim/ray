@@ -416,6 +416,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_asyncio,
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
+            c_string serialized_sandbox_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
@@ -890,6 +891,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuTopology
     # Port names for local port discovery
     cdef const char[] kRuntimeEnvAgentPortName
+    cdef const char[] kSandboxEnvAgentPortName
     cdef const char[] kMetricsAgentPortName
     cdef const char[] kMetricsExportPortName
     cdef const char[] kDashboardAgentListenPortName

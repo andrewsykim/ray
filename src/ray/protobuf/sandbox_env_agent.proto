@@ -1,0 +1,69 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+enum SandboxAgentRpcStatus {
+  // OK.
+  AGENT_RPC_STATUS_OK = 0;
+  // Failed.
+  AGENT_RPC_STATUS_FAILED = 1;
+}
+
+message GetOrCreateSandboxEnvRequest {
+  /// Json serialized [SandboxEnv].
+  /// For details, checkout "//python/ray/sandbox_env/sandbox_env.py".
+  string serialized_sandbox_env = 1;
+
+  SandboxEnvConfig sandbox_env_config = 2;
+  /// Hex format of [JobId].
+  /// For details, checkout "//src/ray/common/id.h".
+  bytes job_id = 3;
+  string source_process = 4;
+}
+
+message GetOrCreateSandboxEnvReply {
+  SandboxAgentRpcStatus status = 1;
+  string error_message = 2;
+  /// Json serialized [SandboxEnvContext].
+  /// For details, checkeout "//python/ray/_private/sandbox_env/context.py".
+  string serialized_sandbox_env_context = 3;
+}
+
+message DeleteSandboxEnvIfPossibleRequest {
+  /// Json serialized [SandboxEnv].
+  string serialized_sandbox_env = 1;
+  string source_process = 2;
+}
+
+message DeleteSandboxEnvIfPossibleReply {
+  SandboxAgentRpcStatus status = 1;
+  string error_message = 2;
+}
+
+message GetSandboxEnvsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetSandboxEnvsInfoReply {
+  repeated SandboxEnvState sandbox_env_states = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
+}

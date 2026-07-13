@@ -40,6 +40,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/sandbox_env_agent_client.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
@@ -101,6 +102,7 @@ struct PopWorkerRequest {
   const std::optional<bool> is_actor_worker_;
   const rpc::RuntimeEnvInfo runtime_env_info_;
   const int runtime_env_hash_;
+  const std::string serialized_sandbox_env_;
   const std::vector<std::string> dynamic_options_;
   std::optional<absl::Duration> worker_startup_keep_alive_duration_;
 
@@ -114,6 +116,7 @@ struct PopWorkerRequest {
                    std::optional<bool> actor_worker,
                    rpc::RuntimeEnvInfo runtime_env_info,
                    int runtime_env_hash,
+                   std::string serialized_sandbox_env,
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
@@ -125,6 +128,7 @@ struct PopWorkerRequest {
         is_actor_worker_(actor_worker),
         runtime_env_info_(std::move(runtime_env_info)),
         runtime_env_hash_(runtime_env_hash),
+        serialized_sandbox_env_(std::move(serialized_sandbox_env)),
         dynamic_options_(std::move(options)),
         worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
         callback_(std::move(callback)) {}
@@ -222,6 +226,8 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
 
   virtual void SetRuntimeEnvAgentClient(
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
+  virtual void SetSandboxEnvAgentClient(
+      std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
@@ -347,6 +353,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// Set Runtime Env Manager Client.
   void SetRuntimeEnvAgentClient(
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) override;
+  void SetSandboxEnvAgentClient(
+      std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client) override;
 
   /// Handles the event that a job is started.
   ///
@@ -596,7 +604,8 @@ class WorkerPool : public WorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt,
+      const std::string &serialized_sandbox_env_context = "{}");
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -825,6 +834,15 @@ class WorkerPool : public WorkerPoolInterface {
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
+  /// Create sandbox env asynchronously by sandbox env agent.
+  void GetOrCreateSandboxEnv(const std::string &serialized_sandbox_env,
+                             const rpc::SandboxEnvConfig &sandbox_env_config,
+                             const JobID &job_id,
+                             const GetOrCreateSandboxEnvCallback &callback);
+
+  /// Delete sandbox env asynchronously by sandbox env agent.
+  void DeleteSandboxEnvIfPossible(const std::string &serialized_sandbox_env);
+
   const ProcessInterface &AddWorkerProcess(
       State &state,
       const WorkerID &worker_id,
@@ -921,6 +939,8 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Runtime env manager client.
   std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
+  /// Sandbox env agent client.
+  std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client_;
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
   int64_t process_failed_rate_limited_ = 0;

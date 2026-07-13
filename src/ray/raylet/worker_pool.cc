@@ -29,6 +29,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -209,6 +210,14 @@ void WorkerPool::SetRuntimeEnvAgentClient(
     RAY_LOG(FATAL) << "SetRuntimeEnvAgentClient requires non empty pointer";
   }
   runtime_env_agent_client_ = std::move(runtime_env_agent_client);
+}
+
+void WorkerPool::SetSandboxEnvAgentClient(
+    std::unique_ptr<SandboxEnvAgentClient> sandbox_env_agent_client) {
+  if (!sandbox_env_agent_client) {
+    RAY_LOG(FATAL) << "SetSandboxEnvAgentClient requires non empty pointer";
+  }
+  sandbox_env_agent_client_ = std::move(sandbox_env_agent_client);
 }
 
 void WorkerPool::PopWorkerCallbackAsync(PopWorkerCallback callback,
@@ -468,7 +477,8 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
     const int runtime_env_hash,
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    const std::string &serialized_sandbox_env_context) {
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -522,6 +532,20 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                               runtime_env_hash,
                               serialized_runtime_env_context,
                               state);
+
+  if (!serialized_sandbox_env_context.empty() && serialized_sandbox_env_context != "{}") {
+    try {
+      auto json_ctx = nlohmann::json::parse(serialized_sandbox_env_context);
+      if (json_ctx.contains("command_prefix") && json_ctx["command_prefix"].is_array()) {
+        std::vector<std::string> prefix =
+            json_ctx["command_prefix"].get<std::vector<std::string>>();
+        worker_command_args.insert(
+            worker_command_args.begin(), prefix.begin(), prefix.end());
+      }
+    } catch (const std::exception &e) {
+      RAY_LOG(ERROR) << "Failed to parse sandbox env context: " << e.what();
+    }
+  }
 
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
@@ -1367,6 +1391,11 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
       pop_worker_request.dynamic_options_) {
     return WorkerUnfitForLeaseReason::DYNAMIC_OPTIONS_MISMATCH;
   }
+  // For now, never lease an idle worker if the task requires a sandbox env.
+  // We don't pool sandboxed workers yet.
+  if (!pop_worker_request.serialized_sandbox_env_.empty()) {
+    return WorkerUnfitForLeaseReason::RUNTIME_ENV_MISMATCH;
+  }
   return WorkerUnfitForLeaseReason::NONE;
 }
 
@@ -1374,7 +1403,8 @@ void WorkerPool::StartNewWorker(
     const std::shared_ptr<PopWorkerRequest> &pop_worker_request) {
   auto start_worker_process_fn = [this](
                                      std::shared_ptr<PopWorkerRequest> request,
-                                     const std::string &serialized_runtime_env_context) {
+                                     const std::string &serialized_runtime_env_context,
+                                     const std::string &serialized_sandbox_env_context) {
     auto &state = GetStateForLanguage(request->language_);
     const std::string &serialized_runtime_env =
         request->runtime_env_info_.serialized_runtime_env();
@@ -1389,7 +1419,8 @@ void WorkerPool::StartNewWorker(
                            request->runtime_env_hash_,
                            serialized_runtime_env_context,
                            request->runtime_env_info_,
-                           request->worker_startup_keep_alive_duration_);
+                           request->worker_startup_keep_alive_duration_,
+                           serialized_sandbox_env_context);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1409,18 +1440,50 @@ void WorkerPool::StartNewWorker(
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info_.serialized_runtime_env();
 
+  auto get_sandbox_env_fn = [this, start_worker_process_fn, pop_worker_request](
+                                const std::string &serialized_runtime_env_context) {
+    RAY_LOG(INFO) << "get_sandbox_env_fn called with: "
+                  << pop_worker_request->serialized_sandbox_env_;
+    if (!pop_worker_request->serialized_sandbox_env_.empty()) {
+      GetOrCreateSandboxEnv(
+          pop_worker_request->serialized_sandbox_env_,
+          /*sandbox_env_config=*/rpc::SandboxEnvConfig(),
+          pop_worker_request->job_id_,
+          [this,
+           start_worker_process_fn,
+           pop_worker_request,
+           serialized_runtime_env_context](
+              bool successful,
+              const std::string &serialized_sandbox_env_context,
+              const std::string &setup_error_message) {
+            if (successful) {
+              start_worker_process_fn(pop_worker_request,
+                                      serialized_runtime_env_context,
+                                      serialized_sandbox_env_context);
+            } else {
+              pop_worker_request->callback_(
+                  nullptr,
+                  PopWorkerStatus::RuntimeEnvCreationFailed,
+                  /*runtime_env_setup_error_message*/ setup_error_message);
+            }
+          });
+    } else {
+      start_worker_process_fn(pop_worker_request, serialized_runtime_env_context, "");
+    }
+  };
+
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // create runtime env.
     GetOrCreateRuntimeEnv(
         serialized_runtime_env,
         pop_worker_request->runtime_env_info_.runtime_env_config(),
         pop_worker_request->job_id_,
-        [this, start_worker_process_fn, pop_worker_request](
+        [this, get_sandbox_env_fn, pop_worker_request](
             bool successful,
             const std::string &serialized_runtime_env_context,
             const std::string &setup_error_message) {
           if (successful) {
-            start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
+            get_sandbox_env_fn(serialized_runtime_env_context);
           } else {
             process_failed_runtime_env_setup_failed_++;
             pop_worker_request->callback_(
@@ -1430,7 +1493,7 @@ void WorkerPool::StartNewWorker(
           }
         });
   } else {
-    start_worker_process_fn(pop_worker_request, "");
+    get_sandbox_env_fn("");
   }
 }
 
@@ -1445,6 +1508,7 @@ void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
       /*is_actor_worker=*/lease_spec.IsActorCreationTask(),
       lease_spec.RuntimeEnvInfo(),
       lease_spec.GetRuntimeEnvHash(),
+      lease_spec.SerializedSandboxEnv(),
       lease_spec.DynamicWorkerOptionsOrEmpty(),
       /*worker_startup_keep_alive_duration=*/std::nullopt,
       [this, lease_spec, callback](
@@ -1546,6 +1610,12 @@ void WorkerPool::PrestartWorkers(const LeaseSpecification &lease_spec,
   if (lease_spec.IsActorCreationTask() && lease_spec.DynamicWorkerOptionsSize() > 0 &&
       lease_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
+  }
+
+  if (!lease_spec.SerializedSandboxEnv().empty()) {
+    // Sandboxed workers are not pooled yet, so prestarting them would only
+    // create normal workers that are never matched to the sandboxed lease spec.
+    return;
   }
 
   auto &state = GetStateForLanguage(lease_spec.GetLanguage());
@@ -1902,6 +1972,47 @@ void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtim
           if (!successful) {
             RAY_LOG(ERROR) << "Delete runtime env failed";
             RAY_LOG(DEBUG) << "Runtime env: " << serialized_runtime_env;
+          }
+        });
+  }
+}
+
+void WorkerPool::GetOrCreateSandboxEnv(const std::string &serialized_sandbox_env,
+                                       const rpc::SandboxEnvConfig &sandbox_env_config,
+                                       const JobID &job_id,
+                                       const GetOrCreateSandboxEnvCallback &callback) {
+  RAY_LOG(DEBUG) << "GetOrCreateSandboxEnv for job " << job_id << " with sandbox_env "
+                 << serialized_sandbox_env;
+  sandbox_env_agent_client_->GetOrCreateSandboxEnv(
+      job_id,
+      serialized_sandbox_env,
+      sandbox_env_config,
+      [job_id, serialized_sandbox_env, sandbox_env_config, callback](
+          bool successful,
+          const std::string &serialized_sandbox_env_context,
+          const std::string &setup_error_message) {
+        if (successful) {
+          callback(true, serialized_sandbox_env_context, "");
+        } else {
+          RAY_LOG(WARNING) << "Couldn't create a sandbox environment for job " << job_id
+                           << ".";
+          RAY_LOG(DEBUG) << "Sandbox env for job " << job_id << ": "
+                         << serialized_sandbox_env;
+          callback(/*successful=*/false,
+                   /*serialized_sandbox_env_context=*/"",
+                   /*setup_error_message=*/setup_error_message);
+        }
+      });
+}
+
+void WorkerPool::DeleteSandboxEnvIfPossible(const std::string &serialized_sandbox_env) {
+  RAY_LOG(DEBUG) << "DeleteSandboxEnvIfPossible " << serialized_sandbox_env;
+  if (!serialized_sandbox_env.empty()) {
+    sandbox_env_agent_client_->DeleteSandboxEnvIfPossible(
+        serialized_sandbox_env, [serialized_sandbox_env](bool successful) {
+          if (!successful) {
+            RAY_LOG(ERROR) << "Delete sandbox env failed";
+            RAY_LOG(DEBUG) << "Sandbox env: " << serialized_sandbox_env;
           }
         });
   }

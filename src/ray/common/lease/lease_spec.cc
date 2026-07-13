@@ -62,6 +62,9 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
   } else {
     message_->set_max_retries(task_spec.max_retries());
   }
+  RAY_LOG(INFO) << "LeaseSpec copied sandbox_env: " << task_spec.serialized_sandbox_env();
+  RAY_LOG(INFO) << "LeaseSpec copied sandbox_env: " << task_spec.serialized_sandbox_env();
+  message_->set_serialized_sandbox_env(task_spec.serialized_sandbox_env());
   ComputeResources();
 }
 
@@ -249,6 +252,12 @@ bool LeaseSpecification::HasRuntimeEnv() const {
 
 const std::string &LeaseSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
+}
+
+bool LeaseSpecification::HasSandboxEnv() const { return !SerializedSandboxEnv().empty(); }
+
+const std::string &LeaseSpecification::SerializedSandboxEnv() const {
+  return message_->serialized_sandbox_env();
 }
 
 const rpc::RuntimeEnvInfo &LeaseSpecification::RuntimeEnvInfo() const {

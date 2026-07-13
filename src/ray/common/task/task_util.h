@@ -161,7 +161,8 @@ class TaskSpecBuilder {
       const LabelSelector &label_selector = {},
       const std::vector<FallbackOption> &fallback_strategy =
           std::vector<FallbackOption>(),
-      uint64_t num_objects_per_yield = 1) {
+      uint64_t num_objects_per_yield = 1,
+      const std::string &serialized_sandbox_env = "") {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -196,6 +197,7 @@ class TaskSpecBuilder {
     message_->mutable_labels()->insert(labels.begin(), labels.end());
     label_selector.ToProto(message_->mutable_label_selector());
     *message_->mutable_fallback_strategy() = SerializeFallbackStrategy(fallback_strategy);
+    message_->set_serialized_sandbox_env(serialized_sandbox_env);
     return *this;
   }
 

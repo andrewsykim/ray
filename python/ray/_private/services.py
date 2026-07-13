@@ -1957,6 +1957,26 @@ def start_raylet(
         )
         runtime_env_agent_command.append(f"--logging-format={logging_format}")
 
+    sandbox_env_agent_command = [
+        *_build_python_executable_command_memory_profileable(
+            "sandbox_env_agent", session_dir
+        ),
+        os.path.join(RAY_PATH, "_private", "sandbox_env", "agent", "main.py"),
+        f"--node-id={node_id}",
+        f"--node-ip-address={node_ip_address}",
+        "--sandbox-env-agent-port=0",
+        f"--session-dir={session_dir}",
+        f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
+        f"--sandbox-env-dir={resource_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--log-dir={log_dir}",
+        f"--temp-dir={temp_dir}",
+        "--logging-filename=",
+        f"--logging-format={ray_constants.LOGGER_FORMAT_STDERR.format(component='sandbox_env_agent')}",
+    ]
+
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
@@ -2027,6 +2047,11 @@ def start_raylet(
     command.append(
         "--runtime_env_agent_command={}".format(
             subprocess.list2cmdline(runtime_env_agent_command)
+        )
+    )
+    command.append(
+        "--sandbox_env_agent_command={}".format(
+            subprocess.list2cmdline(sandbox_env_agent_command)
         )
     )
     if huge_pages:

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/sandbox_env_agent_client.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast.hpp>
@@ -33,7 +33,7 @@
 #include "ray/util/clock.h"
 #include "ray/util/logging.h"
 #include "ray/util/process_utils.h"
-#include "src/ray/protobuf/runtime_env_agent.pb.h"
+#include "src/ray/protobuf/sandbox_env_agent.pb.h"
 
 namespace beast = boost::beast;  // from <boost/beast.hpp>
 namespace http = beast::http;    // from <boost/beast/http.hpp>
@@ -266,13 +266,13 @@ class SessionPool {
 };
 
 inline constexpr std::string_view HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV =
-    "/get_or_create_runtime_env";
+    "/get_or_create_sandbox_env";
 inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
-    "/delete_runtime_env_if_possible";
+    "/delete_sandbox_env_if_possible";
 
-class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
+class HttpSandboxEnvAgentClient : public SandboxEnvAgentClient {
  public:
-  HttpRuntimeEnvAgentClient(
+  HttpSandboxEnvAgentClient(
       instrumented_io_context &io_context,
       const std::string &address,
       int port,
@@ -292,7 +292,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         clock_(clock),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
-  ~HttpRuntimeEnvAgentClient() override = default;
+  ~HttpSandboxEnvAgentClient() override = default;
 
   template <typename T>
   using SuccCallback = std::function<void(T)>;
@@ -305,7 +305,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         << "The raylet exited immediately because the runtime env agent timed out when "
            "Raylet try to connect to it. This can happen because the runtime env agent "
            "was never started, or is listening to the wrong port. Read the log `cat "
-           "/tmp/ray/session_latest/logs/runtime_env_agent.log`. You can find the log "
+           "/tmp/ray/session_latest/logs/sandbox_env_agent.log`. You can find the log "
            "file structure here "
            "https://docs.ray.io/en/master/ray-observability/user-guides/"
            "configure-logging.html#logging-directory-structure.\n";
@@ -365,37 +365,37 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   }
 
   // Making HTTP call.
-  // POST /get_or_create_runtime_env
-  // Body = proto rpc::GetOrCreateRuntimeEnvRequest
-  void GetOrCreateRuntimeEnv(const JobID &job_id,
-                             const std::string &serialized_runtime_env,
-                             const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
-    RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
-        [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
+  // POST /get_or_create_sandbox_env
+  // Body = proto rpc::GetOrCreateSandboxEnvRequest
+  void GetOrCreateSandboxEnv(const JobID &job_id,
+                             const std::string &serialized_sandbox_env,
+                             const rpc::SandboxEnvConfig &sandbox_env_config,
+                             GetOrCreateSandboxEnvCallback callback) override {
+    RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateSandboxEnvReply>(
+        [=](SuccCallback<rpc::GetOrCreateSandboxEnvReply> succ_callback,
             FailCallback fail_callback) {
-          return TryGetOrCreateRuntimeEnv(job_id,
-                                          serialized_runtime_env,
-                                          runtime_env_config,
+          return TryGetOrCreateSandboxEnv(job_id,
+                                          serialized_sandbox_env,
+                                          sandbox_env_config,
                                           succ_callback,
                                           fail_callback);
         },
         /*succ_callback=*/
-        [=](rpc::GetOrCreateRuntimeEnvReply reply) {
+        [=](rpc::GetOrCreateSandboxEnvReply reply) {
           // HTTP request & protobuf parsing succeeded, but we got a non-OK from the
           // remote server.
           if (reply.status() != rpc::AGENT_RPC_STATUS_OK) {
             RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
                           << ", error message: " << reply.error_message();
             RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                           << serialized_runtime_env;
+                           << serialized_sandbox_env;
             callback(false,
-                     reply.serialized_runtime_env_context(),
+                     reply.serialized_sandbox_env_context(),
                      /*setup_error_message*/ reply.error_message());
           } else {
             RAY_LOG(INFO) << "Create runtime env for job " << job_id;
             callback(true,
-                     reply.serialized_runtime_env_context(),
+                     reply.serialized_sandbox_env_context(),
                      /*setup_error_message*/ "");
           }
         },
@@ -409,7 +409,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
               ", maybe there are some network problems, will fail the request.");
           RAY_LOG(INFO) << error_message;
           RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                         << serialized_runtime_env;
+                         << serialized_sandbox_env;
           callback(false, "", error_message);
         },
         clock_.SteadyNowMillis() + agent_register_timeout_ms_);
@@ -418,16 +418,16 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // Does the real work of calling HTTP.
   // Invokes `succ_callback` with server reply (which may be OK or application errors),
   // or invokes `fail_callback` on network error or protobuf deserialization error.
-  void TryGetOrCreateRuntimeEnv(
+  void TryGetOrCreateSandboxEnv(
       const JobID &job_id,
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
+      const std::string &serialized_sandbox_env,
+      const rpc::SandboxEnvConfig &sandbox_env_config,
+      std::function<void(rpc::GetOrCreateSandboxEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
-    rpc::GetOrCreateRuntimeEnvRequest request;
+    rpc::GetOrCreateSandboxEnvRequest request;
     request.set_job_id(job_id.Hex());
-    request.set_serialized_runtime_env(serialized_runtime_env);
-    request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
+    request.set_serialized_sandbox_env(serialized_sandbox_env);
+    request.mutable_sandbox_env_config()->CopyFrom(sandbox_env_config);
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(
@@ -439,7 +439,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         std::move(payload),
         /*succ_callback=*/
         [succ_callback, fail_callback](std::string body) {
-          rpc::GetOrCreateRuntimeEnvReply reply;
+          rpc::GetOrCreateSandboxEnvReply reply;
           if (!reply.ParseFromString(body)) {
             fail_callback(Status::IOError("protobuf parse error"));
           } else {
@@ -451,25 +451,25 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   }
 
   // Making HTTP call.
-  // POST /delete_runtime_env_if_possible
-  // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
-  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
-    RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
-        [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
+  // POST /delete_sandbox_env_if_possible
+  // Body = proto rpc::DeleteSandboxEnvIfPossibleRequest
+  void DeleteSandboxEnvIfPossible(const std::string &serialized_sandbox_env,
+                                  DeleteSandboxEnvIfPossibleCallback callback) override {
+    RetryInvokeOnNotFoundWithDeadline<rpc::DeleteSandboxEnvIfPossibleReply>(
+        [=](SuccCallback<rpc::DeleteSandboxEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
-          return TryDeleteRuntimeEnvIfPossible(
-              serialized_runtime_env, std::move(succ_callback), std::move(fail_callback));
+          return TryDeleteSandboxEnvIfPossible(
+              serialized_sandbox_env, std::move(succ_callback), std::move(fail_callback));
         },
         /*succ_callback=*/
-        [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
+        [=](rpc::DeleteSandboxEnvIfPossibleReply reply) {
           if (reply.status() != rpc::AGENT_RPC_STATUS_OK) {
             // HTTP request & protobuf parsing succeeded, but we got a non-OK from the
             // remote server.
             // TODO(sang): Find a better way to delivering error messages in this
             RAY_LOG(WARNING) << "Failed to delete runtime env"
                              << ", error message: " << reply.error_message();
-            RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
+            RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_sandbox_env;
             callback(false);
           } else {
             callback(true);
@@ -480,7 +480,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           RAY_LOG(WARNING)
               << "Failed to delete runtime env reference, status = " << status
               << ", maybe there are some network problems, will fail the request.";
-          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
+          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_sandbox_env;
           callback(false);
         },
         clock_.SteadyNowMillis() + agent_register_timeout_ms_);
@@ -488,12 +488,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
 
   // Invokes `succ_callback` with server reply (which may be OK or application errors),
   // or invokes `fail_callback` on network error or protobuf deserialization error.
-  void TryDeleteRuntimeEnvIfPossible(
-      const std::string &serialized_runtime_env,
-      std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
+  void TryDeleteSandboxEnvIfPossible(
+      const std::string &serialized_sandbox_env,
+      std::function<void(rpc::DeleteSandboxEnvIfPossibleReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
-    rpc::DeleteRuntimeEnvIfPossibleRequest request;
-    request.set_serialized_runtime_env(serialized_runtime_env);
+    rpc::DeleteSandboxEnvIfPossibleRequest request;
+    request.set_serialized_sandbox_env(serialized_sandbox_env);
     request.set_source_process("raylet");
     std::string payload = request.SerializeAsString();
 
@@ -506,7 +506,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         std::move(payload),
         /*succ_callback=*/
         [succ_callback, fail_callback](std::string body) {
-          rpc::DeleteRuntimeEnvIfPossibleReply reply;
+          rpc::DeleteSandboxEnvIfPossibleReply reply;
           if (!reply.ParseFromString(body)) {
             fail_callback(Status::IOError("protobuf parse error"));
           } else {
@@ -533,7 +533,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
 };
 }  // namespace
 
-std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
+std::unique_ptr<SandboxEnvAgentClient> SandboxEnvAgentClient::Create(
     instrumented_io_context &io_context,
     const std::string &address,
     int port,
@@ -543,7 +543,7 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
-  return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
+  return std::make_unique<HttpSandboxEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,

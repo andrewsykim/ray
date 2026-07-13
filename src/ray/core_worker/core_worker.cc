@@ -1907,6 +1907,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
+    const std::string &serialized_sandbox_env_info,
     const std::string &call_site,
     const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
@@ -1967,7 +1968,9 @@ void CoreWorker::BuildCommonTaskSpec(
       labels,
       label_selector,
       fallback_strategy,
-      num_objects_per_yield);
+      num_objects_per_yield,
+      serialized_sandbox_env_info);
+  RAY_LOG(INFO) << "BuildCommonTaskSpec sandbox_env: " << serialized_sandbox_env_info;
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2039,6 +2042,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
+                      /*serialized_sandbox_env_info=*/"",
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name=*/"",
@@ -2129,6 +2133,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       /*debugger_breakpoint=*/"",
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
+                      actor_creation_options.serialized_sandbox_env_info,
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name=*/"",
@@ -2482,6 +2487,7 @@ Status CoreWorker::SubmitActorTask(
                       /*debugger_breakpoint=*/"",
                       depth,
                       /*serialized_runtime_env_info=*/"{}",
+                      /*serialized_sandbox_env_info=*/"",
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,

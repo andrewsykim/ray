@@ -306,6 +306,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                               is_async,
                                               /*scheduling_strategy=*/scheduling_strategy,
                                               serialized_runtime_env,
+                                              /*serialized_sandbox_env=*/"",
                                               concurrency_groups,
                                               allow_out_of_order_execution,
                                               max_pending_calls};

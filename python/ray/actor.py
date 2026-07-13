@@ -2121,6 +2121,17 @@ class ActorClass(Generic[T]):
                 serialize=True,
             )
 
+        serialized_sandbox_env_info = None
+        sandbox_env = actor_options.get("sandbox_env")
+        if sandbox_env is not None:
+            import json
+
+            serialized_sandbox_env_info = json.dumps(
+                sandbox_env.to_dict()
+                if hasattr(sandbox_env, "to_dict")
+                else sandbox_env
+            )
+
         concurrency_groups_dict = {}
         if meta.concurrency_groups is None:
             meta.concurrency_groups = []
@@ -2198,6 +2209,7 @@ class ActorClass(Generic[T]):
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             serialized_runtime_env_info=serialized_runtime_env_info or "{}",
+            serialized_sandbox_env_info=serialized_sandbox_env_info or "",
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,

@@ -81,6 +81,9 @@ struct NodeManagerConfig {
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
+  /// The port to connect the sandbox env agent. Note the address is equal to the
+  /// node manager address.
+  int sandbox_env_agent_port;
   /// The port to connect the metrics agent (dashboard agent grpc port).
   int metrics_agent_port;
   /// The port at which metrics are exposed.
@@ -111,6 +114,8 @@ struct NodeManagerConfig {
   std::string dashboard_agent_command;
   /// The command used to start the runtime env agent. Must not be empty.
   std::string runtime_env_agent_command;
+  /// The command used to start the sandbox env agent. Can be empty.
+  std::string sandbox_env_agent_command;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
   /// The store socket name.
@@ -206,6 +211,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Return the runtime env agent port.
   int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
+
+  /// Return the sandbox env agent port.
+  int GetSandboxEnvAgentPort() const { return sandbox_env_agent_port_; }
 
   /// Return the metrics agent port.
   int GetMetricsAgentPort() const { return metrics_agent_port_; }
@@ -841,7 +849,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  std::unique_ptr<AgentManager> CreateSandboxEnvAgentManager(
+      const NodeID &self_node_id, const NodeManagerConfig &config);
+
   int WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                 const NodeManagerConfig &config);
+
+  int WaitForSandboxEnvAgentPort(const NodeID &self_node_id,
                                  const NodeManagerConfig &config);
 
   /// ID of this node.
@@ -905,6 +919,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
   int runtime_env_agent_port_{0};
+  std::unique_ptr<AgentManager> sandbox_env_agent_manager_;
+  int sandbox_env_agent_port_{0};
   int metrics_agent_port_{0};
   int metrics_export_port_{0};
   int dashboard_agent_listen_port_{0};

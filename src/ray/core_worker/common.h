@@ -136,6 +136,7 @@ struct ActorCreationOptions {
                        bool is_asyncio_p,
                        rpc::SchedulingStrategy scheduling_strategy_p,
                        std::string serialized_runtime_env_info_p = "{}",
+                       std::string serialized_sandbox_env_info_p = "",
                        std::vector<ConcurrencyGroup> concurrency_groups_p = {},
                        bool allow_out_of_order_execution_p = false,
                        int32_t max_pending_calls_p = -1,
@@ -157,6 +158,7 @@ struct ActorCreationOptions {
         ray_namespace(ray_namespace_p),
         is_asyncio(is_asyncio_p),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
+        serialized_sandbox_env_info(std::move(serialized_sandbox_env_info_p)),
         concurrency_groups(std::move(concurrency_groups_p)),
         allow_out_of_order_execution(allow_out_of_order_execution_p),
         max_pending_calls(max_pending_calls_p),
@@ -210,6 +212,7 @@ struct ActorCreationOptions {
   /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
+  std::string serialized_sandbox_env_info;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;

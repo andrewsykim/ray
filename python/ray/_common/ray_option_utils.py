@@ -147,6 +147,7 @@ _common_options = {
     "placement_group_capture_child_tasks": Option((bool, type(None))),
     "resources": Option((dict, type(None)), lambda x: _validate_resources(x)),
     "runtime_env": Option((dict, type(None))),
+    "sandbox_env": Option((dict, type(None), object)),
     "scheduling_strategy": Option(
         (
             type(None),

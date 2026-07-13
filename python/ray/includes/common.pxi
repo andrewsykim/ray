@@ -30,6 +30,7 @@ from ray.includes.common cimport (
     kLabelKeyTpuPodType,
     kRayInternalNamespacePrefix,
     kRuntimeEnvAgentPortName,
+    kSandboxEnvAgentPortName,
     kMetricsAgentPortName,
     kMetricsExportPortName,
     kDashboardAgentListenPortName,
@@ -180,6 +181,7 @@ RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
 
 # Port names for local port discovery
 RUNTIME_ENV_AGENT_PORT_NAME = kRuntimeEnvAgentPortName.decode()
+SANDBOX_ENV_AGENT_PORT_NAME = kSandboxEnvAgentPortName.decode()
 METRICS_AGENT_PORT_NAME = kMetricsAgentPortName.decode()
 METRICS_EXPORT_PORT_NAME = kMetricsExportPortName.decode()
 DASHBOARD_AGENT_LISTEN_PORT_NAME = kDashboardAgentListenPortName.decode()

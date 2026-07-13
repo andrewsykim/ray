@@ -76,6 +76,8 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   bool HasRuntimeEnv() const;
   const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
   const std::string &SerializedRuntimeEnv() const;
+  bool HasSandboxEnv() const;
+  const std::string &SerializedSandboxEnv() const;
   int64_t GetDepth() const;
   ActorID RootDetachedActorId() const;
   ray::FunctionDescriptor FunctionDescriptor() const;

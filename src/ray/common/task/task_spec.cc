@@ -177,6 +177,10 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
+const std::string &TaskSpecification::SerializedSandboxEnv() const {
+  return message_->serialized_sandbox_env();
+}
+
 const rpc::RuntimeEnvInfo &TaskSpecification::RuntimeEnvInfo() const {
   return message_->runtime_env_info();
 }

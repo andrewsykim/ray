@@ -445,6 +445,7 @@ message JobConfig {
     NON_DETACHED = 1;
   }
 
+
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the
@@ -466,6 +467,17 @@ message JobConfig {
   repeated string py_driver_sys_path = 8;
   // Python logging configurations that will be passed to Ray tasks/actors.
   bytes serialized_py_logging_config = 9;
+}
+
+message SandboxEnvConfig {
+}
+
+message SandboxEnvState {
+  string sandbox_env = 1;
+  int64 ref_cnt = 2;
+  optional bool success = 3;
+  optional string error = 4;
+  optional int64 creation_time_ms = 5;
 }
 
 message StreamingGeneratorReturnIdInfo {
@@ -499,6 +511,7 @@ message LeaseSpec {
   uint64 attempt_number = 21;
   string task_name = 22;
   FallbackStrategy fallback_strategy = 23;
+  string serialized_sandbox_env = 24;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -550,6 +563,7 @@ message TaskSpec {
   bytes debugger_breakpoint = 22;
   // Runtime environment for this task.
   RuntimeEnvInfo runtime_env_info = 23;
+  string serialized_sandbox_env = 47;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 24;
   // Whether application-level errors (exceptions) should be retried.
@@ -647,6 +661,7 @@ message TaskInfoEntry {
   map<string, double> required_resources = 13;
   // Runtime environment for this task.
   RuntimeEnvInfo runtime_env_info = 23;
+  string serialized_sandbox_env = 47;
   // The node if of the task. If the task is retried, it could
   // contain the node id of the previous executed task.
   optional bytes node_id = 24;
