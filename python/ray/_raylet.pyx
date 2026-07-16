@@ -3813,7 +3813,8 @@ cdef class CoreWorker:
                     c_bool enable_task_events,
                     labels,
                     label_selector,
-                    fallback_strategy):
+                    fallback_strategy,
+                    c_string serialized_sandbox_env_info):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
@@ -3863,7 +3864,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 NULL_TENSOR_TRANSPORT,
-                c_fallback_strategy)
+                c_fallback_strategy,
+                serialized_sandbox_env_info)
 
             current_c_task_id = current_task.native()
 
@@ -4107,6 +4109,7 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
+            c_string serialized_sandbox_env = b""
             unordered_map[c_string, c_string] c_labels
             CLabelSelector c_label_selector
             c_string call_site
@@ -4154,7 +4157,8 @@ cdef class CoreWorker:
                         c_labels,
                         c_label_selector,
                         c_tensor_transport,
-                        c_fallback_strategy),
+                        c_fallback_strategy,
+                        serialized_sandbox_env),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

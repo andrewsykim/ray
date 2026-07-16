@@ -513,6 +513,18 @@ class RemoteFunction:
         label_selector = task_options.get("label_selector")
         fallback_strategy = task_options.get("fallback_strategy")
 
+        serialized_sandbox_env_info = None
+        sandbox_env = task_options.get("sandbox_env")
+        if sandbox_env is not None:
+            if hasattr(sandbox_env, "serialize"):
+                serialized_sandbox_env_info = sandbox_env.serialize()
+            elif isinstance(sandbox_env, dict):
+                import json
+
+                serialized_sandbox_env_info = json.dumps(sandbox_env)
+            else:
+                raise TypeError("sandbox_env must be a dict or SandboxEnv")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -542,6 +554,7 @@ class RemoteFunction:
                 labels,
                 label_selector,
                 fallback_strategy,
+                serialized_sandbox_env_info or "",
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

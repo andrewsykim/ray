@@ -76,12 +76,14 @@ struct TaskOptions {
               std::unordered_map<std::string, std::string> labels_p = {},
               LabelSelector label_selector_p = {},
               std::optional<std::string> tensor_transport_p = std::nullopt,
-              std::vector<FallbackOption> fallback_strategy_p = {})
+              std::vector<FallbackOption> fallback_strategy_p = {},
+              std::string serialized_sandbox_env_info_p = "")
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
         concurrency_group_name(std::move(concurrency_group_name_p)),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
+        serialized_sandbox_env_info(std::move(serialized_sandbox_env_info_p)),
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         num_objects_per_yield(num_objects_per_yield_p),
         enable_task_events(enable_task_events_p),
@@ -102,6 +104,7 @@ struct TaskOptions {
   /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
+  std::string serialized_sandbox_env_info;
   /// Only applicable when streaming generator is used.
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.

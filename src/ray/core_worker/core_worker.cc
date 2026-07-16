@@ -2042,7 +2042,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
-                      /*serialized_sandbox_env_info=*/"",
+                      task_options.serialized_sandbox_env_info,
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name=*/"",
